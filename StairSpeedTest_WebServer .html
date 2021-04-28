@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<meta charset="utf-8" />
+<!-- 引入 vue -->
+<script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.11/vue.min.js"></script>
+
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+<!-- 引入样式 -->
+<!-- <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css"> -->
+<link href="https://cdn.bootcdn.net/ajax/libs/element-ui/2.13.2/theme-chalk/index.css" rel="stylesheet">
+
+<!-- 引入组件库 -->
+<!-- <script src="https://unpkg.com/element-ui/lib/index.js"></script> -->
+<script src="https://cdn.bootcdn.net/ajax/libs/element-ui/2.13.2/index.js"></script>
+
+<body>
+  <div id="app">
+    <el-row >
+        <el-col :span="22" offset="1">
+            <el-card>
+              <div slot="header">订阅信息</div>
+              <el-container :element-loading-text="loadingContent">
+                <el-form label-width="120px">
+                  <el-row>
+                    <el-form-item label="订阅链接：">
+  									<el-input v-model="subscription" style="width: 800px" size="small" @keyup.enter.native="submit" placeholder="支持 SSR/SSD/V2Ray 订阅链接及节点链接单独测速" :disabled="loading"></el-input>
+  								  </el-form-item>
+                    <el-button type="primary" @click="submit" style="margin-left: 20px" icon="el-icon-check" :disabled="loading || starting" :loading="loading">提 交</el-button>
+                  </el-row>
+                </el-form>
+              </el-container>
+            </el-card>
+            <br>
+            <el-card>
+              <div slot="header">节点列表</div>
+              <el-table
+                max-height="500"
+                :data="tableData"
+                tooltip-effect="dark"
+                style="width: 100%"
+                @selection-change="handleSelectionChange">
+                <el-table-column type="selection" width="55">
+                </el-table-column>
+                <el-table-column label="组" prop="group" width="150">
+                </el-table-column>
+                <el-table-column prop="remarks" label="节点名称" width="300">
+                </el-table-column>
+                <el-table-column prop="server" label="节点地址" width="240">
+                </el-table-column>
+                <el-table-column prop="server_port" label="端口" width="120">
+                </el-table-column>
+              </el-table>
+              <div>
+                <el-button type="primary" @click="start" style="margin-left: 20px" icon="el-icon-check" :disabled="!loaded || starting" :loading="starting">开 始</el-button>
+              </div>
+            </el-card>
+            <br>
+            <el-card>
+              <div slot="header">
+                结果
+              </div>
+              <el-table
+                max-height="500"
+                :data="resuleData"
+                tooltip-effect="dark"
+                style="width: 100%">
+                <el-table-column label="组" prop="group" width="150">
+                </el-table-column>
+                <el-table-column prop="remarks" label="节点名称" width="300">
+                </el-table-column>
+                <el-table-column prop="loss" label="丢失" width="120">
+                </el-table-column>
+                <el-table-column prop="gPing" label="ping(ms)" width="120">
+                </el-table-column>
+                <el-table-column prop="dspeed" label="平均速度(M/s)" width="120">
+                </el-table-column>
+              </el-table>
+            </el-card>
+        </el-col>
+    </el-row>
+  </div>
+
+
+
+
+  <script>
+    Array.prototype.avg = function (call) {
+      let type = Object.prototype.toString.call(call);
+      let sum = 0;
+      if (type === '[object Function]') {
+          sum = this.reduce((pre, cur, i) => pre + call(cur, i), 0);
+      } else {
+          sum = this.reduce((pre, cur) => pre + cur);
+      }
+      return sum / this.length;
+    };
+
+		let app = new Vue({
+			el: "#app",
+			data() {
+			return {
+				title: "Stair Speedtest Web Server ",
+				loading: false,
+        loaded: false,
+        starting: false,
+				subscription: "",
+				loadingContent: "",
+        tableData: [],
+        resuleData: [],
+        multipleSelection: []
+			}
+			},
+			created() {
+				document.title = this.title;
+			},
+			methods: {
+        handleSelectionChange(val) {
+          this.multipleSelection = val;
+        },
+
+				submit: function () {
+					if(!this.subscription.length) {
+						this.$alert("请先输入链接", "错误",{
+							type: "error",
+						});
+					} else {
+						this.loading = true;
+						this.loadingContent="等待后端响应……";
+            var vl = this;
+            vl.tableData.length = 0;
+            axios.post('http://127.0.0.1:10870/readsubscriptions', {
+              url: this.subscription   // 参数 lastName
+            })
+            .then(function (response) {
+              //console.log(response.data);
+              var nodes = response.data
+              nodes.forEach((node, i) => {
+                var tableRow = node.config;
+                //console.log(tableRow);
+                vl.tableData.push(tableRow);
+              });
+              vl.loading = false;
+              vl.loaded = true;
+            })
+            .catch(function (error) {
+              console.log(error);
+            });
+					}
+				},
+        start : function () {
+          if(!this.multipleSelection.length) {
+            this.$alert("没有可用节点", "错误",{
+              type: "error",
+            });
+          } else {
+            this.resuleData.length = 0;
+            this.starting=true;
+            var vl = this;
+            var postParam = {configs:[]};
+            this.multipleSelection.forEach((node, i) => {
+              var config = {};
+              config.config = node;
+              postParam.configs.push(config);
+            });
+            axios.post('http://127.0.0.1:10870/start', postParam,{timeout: 1000})
+            .then(function (response) {
+              console.log(response.data);
+            })
+            .catch( (error)=> {
+              this.getResult();
+            });
+          }
+        },
+        getResult: function () {
+          //console.log("get result");
+          if(this.starting) {
+            setTimeout(this.getResult , 3000);
+          }
+          axios.get('http://127.0.0.1:10870/getresults').then((response) =>{
+            //console.log(response.data);
+            this.resuleData.length = 0;
+            if(response.data.results) {
+              response.data.results.forEach((node, i) => {
+                node.dspeed = (node.dspeed/1000/1000).toFixed(2);
+                node.gPing = (node.gPing * 1000).toFixed(2);
+              });
+              this.resuleData = response.data.results;
+            }
+            if(response.data.status == "running") {
+              var dspeed =
+              response.data.current.rawSocketSpeed.filter(item => item > 0);
+              if(dspeed.length > 0) {
+                response.data.current.dspeed = dspeed.avg();
+              }
+              response.data.current.dspeed = (response.data.current.dspeed/1000/1000).toFixed(2);
+              response.data.current.gPing = (response.data.current.gPing*1000).toFixed(2);
+              this.resuleData.push(response.data.current);
+            }
+            if(response.data.status == "stopped") {
+              this.starting=false;
+              console.log("stoped!!");
+            }
+          }).catch(function (error) {
+            this.starting=false;
+            console.log(error);
+          });
+        }
+			}
+		});
+	</script>
+</body>
+</html>
